@@ -207,7 +207,8 @@
   "Arizona Christian University": [],
   "Arizona State University": [
     "Arizona State",
-    "ASU"
+    "ASU",
+    "Territorial Normal School"
   ],
   "Arizona Western College": [
     "AWC"
@@ -1219,9 +1220,7 @@
   "Columbia Basin College": [
     "CBC"
   ],
-  "Columbia College": [
-    "Columbia College of Missouri"
-  ],
+  "Columbia College": [],
   "Columbia College Chicago": [],
   "Columbia Gorge Community College": [],
   "Columbia International University": [
@@ -1948,11 +1947,6 @@
   "George Fox University": [],
   "George Mason University": [
     "GMU"
-  ],
-  "George Washington University": [
-    "GW",
-    "GWU",
-    "Columbian College"
   ],
   "Georgetown College": [],
   "Georgetown University": [],
@@ -3026,7 +3020,9 @@
   "Manor College": [],
   "Mansfield University of Pennsylvania": [],
   "Maranatha Baptist University": [],
-  "Marian University": [],
+  "Marian University": [
+    "Marian College"
+  ],
   "Marietta College": [
     "MC"
   ],
@@ -3942,8 +3938,8 @@
   "Northwest University": [],
   "Northwest Vista College": [],
   "Northwestern College": [
-    "NC",
-    "Northwestern Business College"
+    "NWC",
+    "Northwestern Iowa"
   ],
   "Northwestern Connecticut Community College": [
     "NCCC"
@@ -5160,9 +5156,7 @@
     "Southwestern Bible College"
   ],
   "Southwestern College": [],
-  "Southwestern Community College": [
-    "SWCC"
-  ],
+  "Southwestern Community College": [],
   "Southwestern Illinois College": [],
   "Southwestern Indian Polytechnic Institute": [
     "SIPI"
@@ -7136,7 +7130,9 @@
   "Westfield State University": [
     "Westfield State"
   ],
-  "Westminster College": [],
+  "Westminster College": [
+    "Fulton College"
+  ],
   "Westminster University": [],
   "Westmont College": [],
   "Westmoreland County Community College": [],

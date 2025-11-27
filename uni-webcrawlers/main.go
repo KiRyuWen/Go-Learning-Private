@@ -15,31 +15,34 @@ import (
 var visitedURL = make(map[string]bool)
 var visitedURLList = []string{}
 
+var httpClient = &http.Client{ //suggested by AI, it should be used with same client and repeated use
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100, //
+	},
+}
+
 type visitData struct {
 	url           string
 	targetElement string
-}
-
-type uniName struct {
-	main  string
-	alias []string
+	others        map[string]string
 }
 
 func crawlNodeAction(n *html.Node, pre, post func(n *html.Node)) {
 	//copy from other website
-	//TODO: Why?
 	if pre != nil {
-		// 將節點傳入閉包函式執行
+		// pre-order
 		pre(n)
 	}
 
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		// 遞迴
+		// recur
 		crawlNodeAction(c, pre, post)
 	}
 
 	if post != nil {
-		// 將節點傳入閉包函式執行
+		// post order
 		post(n)
 	}
 }
@@ -52,7 +55,6 @@ func checkHTTPOK(res *http.Response, err error) bool {
 	}
 
 	if res.StatusCode != http.StatusOK {
-		res.Body.Close()
 		fmt.Println(res.StatusCode)
 		return false
 	}
@@ -62,10 +64,9 @@ func checkHTTPOK(res *http.Response, err error) bool {
 
 func parseHTML(res *http.Response) *html.Node {
 	doc, err := html.Parse(res.Body)
-	res.Body.Close()
 
 	if err != nil {
-		fmt.Println("Error: %v", err)
+		fmt.Printf("Error: %v\n", err)
 		return nil
 	}
 
@@ -73,14 +74,14 @@ func parseHTML(res *http.Response) *html.Node {
 }
 
 func crawlUniName(data visitData) ([]string, error) {
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
 	req, _ := http.NewRequest("GET", data.url, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36")
 
-	res, err := client.Do(req)
+	res, err := httpClient.Do(req)
+
+	if res == nil {
+		return nil, err
+	}
 
 	if !checkHTTPOK(res, err) {
 		res.Body.Close()
@@ -88,7 +89,7 @@ func crawlUniName(data visitData) ([]string, error) {
 	}
 
 	doc := parseHTML(res)
-	res.Body.Close()
+	defer res.Body.Close()
 
 	uniNames := []string{}
 
@@ -103,9 +104,9 @@ func crawlUniName(data visitData) ([]string, error) {
 	var parentNode *html.Node = nil
 
 	findUniName := func(n *html.Node) {
-		// 找 <b>
+		// find <b>
 		if n.Type == html.ElementNode && n.Data == data.targetElement {
-			// 確認 b 的 Parent 就是 p
+			// makesure b's parent is <p>
 			if n.Parent != nil && n.Parent.Type == html.ElementNode && n.Parent.Data == "p" {
 
 				if parentNode == nil || parentNode == n.Parent {
@@ -120,7 +121,7 @@ func crawlUniName(data visitData) ([]string, error) {
 	return uniNames, nil
 }
 
-func conCrawlUniName(urls <-chan string, uni_names chan<- []string, wg *sync.WaitGroup) {
+func conCrawlUniName(urls <-chan string, uniURLChan chan<- []string, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	data := visitData{}
@@ -130,19 +131,21 @@ func conCrawlUniName(urls <-chan string, uni_names chan<- []string, wg *sync.Wai
 		data.url = url
 		names, _ := crawlUniName(data)
 
-		uni_names <- names
+		uniURLChan <- names
 
 	}
 }
 
 func crawlSchURL(data visitData) ([]string, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+
 	req, _ := http.NewRequest("GET", data.url, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36")
 
-	res, err := client.Do(req)
+	res, err := httpClient.Do(req)
+
+	if res == nil {
+		return nil, err
+	}
 
 	if !checkHTTPOK(res, err) {
 		res.Body.Close()
@@ -150,7 +153,7 @@ func crawlSchURL(data visitData) ([]string, error) {
 	}
 
 	doc := parseHTML(res)
-	res.Body.Close()
+	defer res.Body.Close()
 
 	allUniLinks := []string{}
 
@@ -198,7 +201,7 @@ func crawlSchURL(data visitData) ([]string, error) {
 }
 
 func saveMapToJSON(filename string, data map[string][]string) error {
-	fmt.Printf("正在將 %d 筆 Map 資料寫入 %s ...\n", len(data), filename)
+	fmt.Printf("Writing Data to %s ...\n", filename)
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -207,9 +210,8 @@ func saveMapToJSON(filename string, data map[string][]string) error {
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ") // 美化輸出
+	encoder.SetIndent("", "  ") // indent output
 
-	// 直接 Encode map 即可，Go 會自動轉成 JSON Object
 	if err := encoder.Encode(data); err != nil {
 		return err
 	}
@@ -221,70 +223,76 @@ func main() {
 	fmt.Println("Hello start main")
 
 	//GO fetch all university URL
-	all_uni_url := "https://en.wikipedia.org/wiki/Index_of_colleges_and_universities_in_the_United_States"
-	tags_to_find := "div"
-	data := visitData{all_uni_url, tags_to_find}
-	url_need_crawl, _ := crawlSchURL(data)
-	println("total number of urls: %d", len(url_need_crawl))
+	indexUniURL := "https://en.wikipedia.org/wiki/Index_of_colleges_and_universities_in_the_United_States"
+	targetTag := "div"
+	data := visitData{indexUniURL, targetTag, nil}
+	uniURLs, _ := crawlSchURL(data)
+	fmt.Printf("total number of urls: %d\n", len(uniURLs))
 
 	//define channel
-	urls := make(chan string, 10)                 //max 10 jobs to push
-	spiders := new(sync.WaitGroup)                // monitor helper
-	uni_names_from_job := make(chan []string, 20) //store at least 20 slice
-	nums_worker := 10
-	for i := 0; i < nums_worker; i++ { //new worker to let it go
+	urlJobs := make(chan string, 10)      //max 10 jobs to push
+	spiders := new(sync.WaitGroup)        // monitor helper
+	uniURLChan := make(chan []string, 20) //store at least 20 slice
+	numWorkers := 10
+	for i := 0; i < numWorkers; i++ { //new worker to let it go
 		spiders.Add(1)
-		go conCrawlUniName(urls, uni_names_from_job, spiders)
+		go conCrawlUniName(urlJobs, uniURLChan, spiders)
 	}
 
 	//assign work
 	go func() {
-		for _, url := range url_need_crawl { //will block on 10 jobs at the same time
-			urls <- url
+		for _, url := range uniURLs { //will block on 10 jobs at the same time
+			urlJobs <- url
 		}
-		close(urls)
+		close(urlJobs)
 		fmt.Println("No jobs need to put in")
 	}()
 
 	go func() {
 		spiders.Wait()
 		//worker finished
-		close(uni_names_from_job)
+		close(uniURLChan)
 		fmt.Println("Finished workers")
 	}()
 
-	uni_names_to_display := make(map[string][]string)
+	uniNames := make(map[string][]string)
+	outliners := [][]string{}
 
-	// ... 啟動監控與收集 ...
+	// record time spent
 	start := time.Now()
 	count := 0
 
-	for uni_names := range uni_names_from_job {
+	for names := range uniURLChan {
 		count++
-		// 📊 每收集 100 個印一次進度，不要每一個都印 (I/O 很慢)
 		if count%100 == 0 {
-			fmt.Printf("已完成: %d / 2917 (耗時: %v)\n", count, time.Since(start))
+			fmt.Printf("Finished: %d / 2917 (Time Spent: %v)\n", count, time.Since(start))
 		}
 
-		schoolName := strings.TrimSpace(uni_names[0])
-		if schoolName == "Also:" || schoolName == "" {
+		if len(names) == 0 {
+			fmt.Println("Didn't get any name")
 			continue
 		}
-		uni_names_to_display[schoolName] = uni_names[1:]
-	}
-	duration := time.Since(start) // ⏱️ 結束計時
 
-	// for k, v := range uni_names_to_display {
-	// 	fmt.Println("name: %s, alias: %v", k, v)
-	// }
-	fmt.Printf("🎉 全部完成！\n總數: %d\n總耗時: %v\n平均吞吐量: %.2f req/s\n",
+		schoolName := strings.TrimSpace(names[0])
+		if schoolName == "Also:" || schoolName == "" {
+			outliners = append(outliners, names)
+			continue
+		}
+		uniNames[schoolName] = names[1:]
+	}
+	duration := time.Since(start)
+
+	fmt.Printf("\nTotal: %d\nTime spent: %v\nAvg throughput: %.2f req/s\n",
 		count, duration, float64(count)/duration.Seconds())
-	fmt.Println("The total school name: %d", len(uni_names_to_display))
+	fmt.Printf("The total school name: %d\n", len(uniNames))
+	fmt.Printf("The total outline: %d\n", len(outliners))
 
-	if err := saveMapToJSON("schools.json", uni_names_to_display); err != nil {
-		fmt.Println("存檔失敗:", err)
+	if err := saveMapToJSON("schools.json", uniNames); err != nil {
+		fmt.Println("Save failed:", err)
 	} else {
-		fmt.Println("存檔成功！")
+		fmt.Println("Save Successfully.")
 	}
+	fmt.Printf("Outliner: %v\n", outliners)
+	fmt.Printf("Visited URL: %v\n", visitedURLList)
 
 }
