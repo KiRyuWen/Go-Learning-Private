@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -292,7 +293,20 @@ func main() {
 	} else {
 		fmt.Println("Save Successfully.")
 	}
-	fmt.Printf("Outliner: %v\n", outliners)
-	fmt.Printf("Visited URL: %v\n", visitedURLList)
+
+	db, err := InitDB()
+
+	if err != nil {
+		log.Fatal("Unable start db:", err)
+	}
+	defer db.Close()
+
+	// if err := InitCreateSchema(db); err != nil {
+	// 	log.Fatal("Create Table failed:", err)
+	// }
+
+	if err := SaveUniToDB(db, uniNames); err != nil {
+		log.Println("Push data into DB failed:", err)
+	}
 
 }
