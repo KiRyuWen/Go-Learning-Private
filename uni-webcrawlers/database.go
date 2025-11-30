@@ -18,6 +18,11 @@ type DBConfig struct {
 	DBName   string
 }
 
+type School struct {
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases"`
+}
+
 func SetDBConfig(config *DBConfig, key string, val string) {
 	switch key {
 	case "DB_USER":
@@ -100,7 +105,7 @@ func InitDB() (*sql.DB, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(3 * time.Minute)
 
-	fmt.Println("Create db successfully")
+	fmt.Println("Connect to db successfully")
 
 	return db, nil
 }
@@ -164,4 +169,44 @@ func SaveUniToDB(db *sql.DB, data map[string][]string) error {
 	fmt.Printf("Finished, time spent: %v\n", time.Since(start))
 
 	return nil
+}
+
+func SearchSchoolsDB(db *sql.DB, name string) ([]School, error) {
+	//TODO: Need to search name also in alias
+
+	start := time.Now()
+
+	query := `
+		SELECT name, aliases
+		FROM schools
+		WHERE name ILIKE $1 OR array_to_string(aliases, ',') ILIKE $1
+		LIMIT 10
+	`
+	name = "%" + name + "%"
+
+	rows, err := db.Query(query, name)
+	results := []School{}
+
+	if err != nil {
+		return nil, fmt.Errorf("query failed %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var school School
+		err := rows.Scan(&school.Name, pq.Array(&school.Aliases))
+		if err != nil {
+			log.Printf("Read failed %v\n", err)
+			return nil, err
+		}
+		results = append(results, school)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	fmt.Println("Time spent in search: ", time.Since(start))
+
+	return results, nil
+
 }

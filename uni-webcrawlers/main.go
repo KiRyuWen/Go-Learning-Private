@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -220,9 +222,7 @@ func saveMapToJSON(filename string, data map[string][]string) error {
 	return nil
 }
 
-func main() {
-	fmt.Println("Hello start main")
-
+func runCrawler(db *sql.DB) {
 	//GO fetch all university URL
 	indexUniURL := "https://en.wikipedia.org/wiki/Index_of_colleges_and_universities_in_the_United_States"
 	targetTag := "div"
@@ -294,19 +294,54 @@ func main() {
 		fmt.Println("Save Successfully.")
 	}
 
-	db, err := InitDB()
-
-	if err != nil {
-		log.Fatal("Unable start db:", err)
-	}
-	defer db.Close()
-
 	// if err := InitCreateSchema(db); err != nil {
 	// 	log.Fatal("Create Table failed:", err)
 	// }
 
 	if err := SaveUniToDB(db, uniNames); err != nil {
 		log.Println("Push data into DB failed:", err)
+	}
+}
+
+func runSearchDB(db *sql.DB, keyword string) {
+	results, err := SearchSchoolsDB(db, keyword)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for idx, school := range results {
+		fmt.Printf("%d. %s (Aliases: %v)\n", idx+1, school.Name, school.Aliases)
+	}
+
+}
+
+func main() {
+	fmt.Println("Hello start main")
+
+	mode := flag.String("mode", "crawl", "operation: 'crawl' or 'search' or 'server' ")
+	keyword := flag.String("keyword", "", "keyword only work in search")
+
+	flag.Parse()
+
+	db, err := InitDB()
+	if err != nil {
+		log.Fatal("Unable start db:", err)
+	}
+	defer db.Close()
+
+	switch *mode {
+	case "crawl":
+		runCrawler(db)
+	case "search":
+		if *keyword == "" {
+			log.Fatal("No keyword error")
+			return
+		}
+		runSearchDB(db, *keyword)
+	case "server":
+		startDBServer(db)
+	default:
+		log.Fatal("No mode error")
 	}
 
 }
