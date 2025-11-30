@@ -1,9 +1,8 @@
-package main
+package crawler
 
 import (
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uni-web-crawler/internal/storage"
 
 	"golang.org/x/net/html"
 )
@@ -139,7 +139,7 @@ func conCrawlUniName(urls <-chan string, uniURLChan chan<- []string, wg *sync.Wa
 	}
 }
 
-func crawlSchURL(data visitData) ([]string, error) {
+func crawlUSUniversityIndexPage(data visitData) ([]string, error) {
 
 	req, _ := http.NewRequest("GET", data.url, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36")
@@ -222,12 +222,12 @@ func saveMapToJSON(filename string, data map[string][]string) error {
 	return nil
 }
 
-func runCrawler(db *sql.DB) {
+func RunCrawler(db *sql.DB) {
 	//GO fetch all university URL
 	indexUniURL := "https://en.wikipedia.org/wiki/Index_of_colleges_and_universities_in_the_United_States"
 	targetTag := "div"
 	data := visitData{indexUniURL, targetTag, nil}
-	uniURLs, _ := crawlSchURL(data)
+	uniURLs, _ := crawlUSUniversityIndexPage(data)
 	fmt.Printf("total number of urls: %d\n", len(uniURLs))
 
 	//define channel
@@ -298,50 +298,7 @@ func runCrawler(db *sql.DB) {
 	// 	log.Fatal("Create Table failed:", err)
 	// }
 
-	if err := SaveUniToDB(db, uniNames); err != nil {
+	if err := storage.SaveUniToDB(db, uniNames); err != nil {
 		log.Println("Push data into DB failed:", err)
 	}
-}
-
-func runSearchDB(db *sql.DB, keyword string) {
-	results, err := SearchSchoolsDB(db, keyword)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for idx, school := range results {
-		fmt.Printf("%d. %s (Aliases: %v)\n", idx+1, school.Name, school.Aliases)
-	}
-
-}
-
-func main() {
-	fmt.Println("Hello start main")
-
-	mode := flag.String("mode", "crawl", "operation: 'crawl' or 'search' or 'server' ")
-	keyword := flag.String("keyword", "", "keyword only work in search")
-
-	flag.Parse()
-
-	db, err := InitDB()
-	if err != nil {
-		log.Fatal("Unable start db:", err)
-	}
-	defer db.Close()
-
-	switch *mode {
-	case "crawl":
-		runCrawler(db)
-	case "search":
-		if *keyword == "" {
-			log.Fatal("No keyword error")
-			return
-		}
-		runSearchDB(db, *keyword)
-	case "server":
-		startDBServer(db)
-	default:
-		log.Fatal("No mode error")
-	}
-
 }

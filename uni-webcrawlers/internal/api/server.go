@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"uni-web-crawler/internal/storage"
 )
 
 type Middleware struct { //middleware handler
@@ -32,7 +34,7 @@ func (s *DBServerHandler) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	results, err := SearchSchoolsDB(s.db, searchUniName)
+	results, err := storage.SearchSchoolsDB(s.db, searchUniName)
 
 	if err != nil {
 		fmt.Println("error when query db name: ", err)
@@ -58,7 +60,7 @@ func (m Middleware) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	fmt.Println("request duration: ", time.Since(start))
 }
 
-func startDBServer(db *sql.DB) {
+func StartDBServer(db *sql.DB) {
 
 	//register a DB mux
 	dbServerHandler := NewDBServerHandler(db)

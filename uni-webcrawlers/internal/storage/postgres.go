@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"bufio"
@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"uni-web-crawler/internal/model"
 
 	"github.com/lib/pq"
 )
@@ -16,11 +17,6 @@ type DBConfig struct {
 	User     string
 	Password string
 	DBName   string
-}
-
-type School struct {
-	Name    string   `json:"name"`
-	Aliases []string `json:"aliases"`
 }
 
 func SetDBConfig(config *DBConfig, key string, val string) {
@@ -171,7 +167,7 @@ func SaveUniToDB(db *sql.DB, data map[string][]string) error {
 	return nil
 }
 
-func SearchSchoolsDB(db *sql.DB, name string) ([]School, error) {
+func SearchSchoolsDB(db *sql.DB, name string) ([]model.School, error) {
 	//TODO: Need to search name also in alias
 
 	start := time.Now()
@@ -185,7 +181,7 @@ func SearchSchoolsDB(db *sql.DB, name string) ([]School, error) {
 	name = "%" + name + "%"
 
 	rows, err := db.Query(query, name)
-	results := []School{}
+	results := []model.School{}
 
 	if err != nil {
 		return nil, fmt.Errorf("query failed %v", err)
@@ -193,7 +189,7 @@ func SearchSchoolsDB(db *sql.DB, name string) ([]School, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var school School
+		var school model.School
 		err := rows.Scan(&school.Name, pq.Array(&school.Aliases))
 		if err != nil {
 			log.Printf("Read failed %v\n", err)
