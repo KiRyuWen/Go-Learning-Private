@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
+	"shrimpbot/internal/crawler"
+	"strings"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -47,6 +50,18 @@ func main() {
 	dg.Close()
 }
 
+func ProcessMessage(msg string) {
+	msgInRunes := []rune(message)
+
+	if len(msgInRunes) > 2000 {
+		length := len(msgInRunes)
+		splitMsgs := [][]rune{}
+		//TODO: split messages within 2000 words, for each 2000 wordsparagraph, you need to split the message without abrupt word
+		//In other words, you need to find the newline within 2000 words, and then start from there to find a closest 2000 words paragraph
+
+	}
+}
+
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the authenticated bot has access to.
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -56,13 +71,26 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-	// If the message is "ping" reply with "Pong!"
-	if m.Content == "ping" {
-		s.ChannelMessageSend(m.ChannelID, "Pong!")
+
+	text := m.Content
+	_, err := url.ParseRequestURI(text)
+	if err != nil {
+		return
+	}
+	log.Println("Received URI")
+
+	if strings.Contains(text, "https://forum.gamer.com.tw/") {
+		log.Println("Receive Bahamut message")
+		// parse specific url to bsn
+		title, content, err := crawler.ScrapeBahamut(text)
+		if err != nil {
+			log.Printf("Error when scraping %s", err.Error())
+			return
+		}
+		message := fmt.Sprintf("%s\n\n%s", title, content)
+		msgInRunes := []rune(message)
+
+		s.ChannelMessageSend(m.ChannelID, message)
 	}
 
-	// If the message is "pong" reply with "Ping!"
-	if m.Content == "pong" {
-		s.ChannelMessageSend(m.ChannelID, "Ping!")
-	}
 }

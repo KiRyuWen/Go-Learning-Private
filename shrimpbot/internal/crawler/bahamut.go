@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ var httpClient = &http.Client{ //suggested by AI, it should be used with same cl
 
 // Return: Title, Content, Error
 func ScrapeBahamut(url string) (string, string, error) {
-
+	log.Println("Scrape URL")
 	if strings.Contains(url, "m.forum.gamer.com.tw") {
 		url = strings.Replace(url, "m.forum", "forum", 1)
 	}
@@ -49,6 +50,8 @@ func ScrapeBahamut(url string) (string, string, error) {
 	title := doc.Find(".c-post__header__title").First().Text()
 	selection := doc.Find(".c-article__content").First()
 	content := strings.TrimSpace(selection.Text())
+
+	log.Println("Scrape URL Done")
 
 	return title, content, nil
 }
