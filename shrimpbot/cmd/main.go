@@ -50,16 +50,38 @@ func main() {
 	dg.Close()
 }
 
-func ProcessMessage(msg string) {
-	msgInRunes := []rune(message)
-
-	if len(msgInRunes) > 2000 {
-		length := len(msgInRunes)
-		splitMsgs := [][]rune{}
+func ProcessMessage(msg string) []string {
+	msgInRunes := []rune(msg)
+	results := []string{}
+	start := 0
+	end := len(msgInRunes)
+	log.Printf("Process maximum words: %d\n", end)
+	for start < end {
+		dst := end - start
+		log.Printf("start: %d \tDst: %d\n", start, dst)
 		//TODO: split messages within 2000 words, for each 2000 wordsparagraph, you need to split the message without abrupt word
 		//In other words, you need to find the newline within 2000 words, and then start from there to find a closest 2000 words paragraph
-
+		if dst <= 2000 {
+			results = append(results, string(msgInRunes[start:start+dst]))
+			break
+		}
+		dst = 2000
+		findNewline := false
+		for j := dst + start; j > start; j-- {
+			if msgInRunes[j] == '\n' {
+				results = append(results, string(msgInRunes[start:j+1]))
+				dst = j - start + 1
+				findNewline = true
+				break
+			}
+		}
+		if !findNewline {
+			results = append(results, string(msgInRunes[start:start+dst]))
+		}
+		start += dst
 	}
+
+	return results
 }
 
 // This function will be called (due to AddHandler above) every time a new
@@ -85,12 +107,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		title, content, err := crawler.ScrapeBahamut(text)
 		if err != nil {
 			log.Printf("Error when scraping %s", err.Error())
+			s.ChannelMessageSend(m.ChannelID, err.Error())
 			return
 		}
 		message := fmt.Sprintf("%s\n\n%s", title, content)
-		msgInRunes := []rune(message)
-
-		s.ChannelMessageSend(m.ChannelID, message)
+		toSends := ProcessMessage(message)
+		for _, msg := range toSends {
+			_, err := s.ChannelMessageSend(m.ChannelID, msg)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+		}
 	}
 
 }
