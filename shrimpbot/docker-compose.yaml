@@ -6,4 +6,4 @@ services:
     container_name: redis_bot
     image: redis:8.4.0
     ports:
-      - "127.0.0.1:6379:6379"
+      - "${REDIS_IP}${REDIS_PORT}:${REDIS_PORT}"

@@ -1,17 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"os/signal"
-	"shrimpbot/internal/crawler"
-	"strings"
+	"shrimpbot/internal/queue"
+	"shrimpbot/internal/worker"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -27,8 +29,21 @@ func main() {
 		fmt.Println("error creating Discord session,", err)
 		return
 	}
+
+	redisClient, err := queue.InitRedis()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker.StartWorkerPool(ctx, dg, redisClient, 5)
+
 	// Register the messageCreate func as a callback for MessageCreate events.
-	dg.AddHandler(messageCreate)
+	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		messageCreate(s, m, ctx, redisClient)
+	})
 
 	// In this example, we only care about receiving message events.
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
@@ -50,43 +65,9 @@ func main() {
 	dg.Close()
 }
 
-func ProcessMessage(msg string) []string {
-	msgInRunes := []rune(msg)
-	results := []string{}
-	start := 0
-	end := len(msgInRunes)
-	log.Printf("Process maximum words: %d\n", end)
-	for start < end {
-		dst := end - start
-		log.Printf("start: %d \tDst: %d\n", start, dst)
-		//TODO: split messages within 2000 words, for each 2000 wordsparagraph, you need to split the message without abrupt word
-		//In other words, you need to find the newline within 2000 words, and then start from there to find a closest 2000 words paragraph
-		if dst <= 2000 {
-			results = append(results, string(msgInRunes[start:start+dst]))
-			break
-		}
-		dst = 2000
-		findNewline := false
-		for j := dst + start; j > start; j-- {
-			if msgInRunes[j] == '\n' {
-				results = append(results, string(msgInRunes[start:j+1]))
-				dst = j - start + 1
-				findNewline = true
-				break
-			}
-		}
-		if !findNewline {
-			results = append(results, string(msgInRunes[start:start+dst]))
-		}
-		start += dst
-	}
-
-	return results
-}
-
 // This function will be called (due to AddHandler above) every time a new
 // message is created on any channel that the authenticated bot has access to.
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, ctx context.Context, rdsClient *redis.Client) {
 
 	// Ignore all messages created by the bot itself
 	// This isn't required in this specific example but it's a good practice.
@@ -99,26 +80,21 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if err != nil {
 		return
 	}
+
+	msgType, isValid := queue.GetMsgType(text)
+
+	if !isValid {
+		return
+	}
 	log.Println("Received URI")
 
-	if strings.Contains(text, "https://forum.gamer.com.tw/") {
-		log.Println("Receive Bahamut message")
-		// parse specific url to bsn
-		title, content, err := crawler.ScrapeBahamut(text)
-		if err != nil {
-			log.Printf("Error when scraping %s", err.Error())
-			s.ChannelMessageSend(m.ChannelID, err.Error())
-			return
-		}
-		message := fmt.Sprintf("%s\n\n%s", title, content)
-		toSends := ProcessMessage(message)
-		for _, msg := range toSends {
-			_, err := s.ChannelMessageSend(m.ChannelID, msg)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-		}
+	discordMsg := queue.NewDiscordMessage(m.ID, msgType, m.ChannelID, text)
+
+	err = queue.Enqueue(ctx, rdsClient, *discordMsg)
+	if err == nil {
+		s.ChannelMessageSend(m.ChannelID, "Receive Message, start working!")
+	} else {
+		s.ChannelMessageSend(m.ChannelID, err.Error())
 	}
 
 }
