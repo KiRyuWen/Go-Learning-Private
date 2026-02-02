@@ -30,7 +30,7 @@ func InitRedis() (client *redis.Client, err error) {
 	return client, err
 }
 
-func Enqueue(ctx context.Context, rdb *redis.Client, msg DiscordMessage) (err error) {
+func Enqueue(ctx context.Context, rdb *redis.Client, msg *DiscordMessage) (err error) {
 	log.Println("Enqueue start")
 	if rdb == nil {
 		return fmt.Errorf("Redis is empty")
@@ -38,7 +38,7 @@ func Enqueue(ctx context.Context, rdb *redis.Client, msg DiscordMessage) (err er
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	payload, err := json.Marshal(msg)
+	payload, err := json.Marshal(*msg)
 	if err != nil {
 		return err
 	}

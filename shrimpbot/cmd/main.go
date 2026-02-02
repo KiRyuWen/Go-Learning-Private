@@ -7,9 +7,12 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"shrimpbot/internal/ai"
 	"shrimpbot/internal/queue"
 	"shrimpbot/internal/worker"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -36,9 +39,20 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	worker.StartWorkerPool(ctx, dg, redisClient, 5)
+	geminiClient, err := ai.InitGemini(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	clientData := &worker.ClientData{
+		RedisClient:  redisClient,
+		GeminiClient: geminiClient,
+	}
+
+	var wg sync.WaitGroup
+
+	worker.StartWorkerPool(ctx, dg, clientData, 5, &wg)
 
 	// Register the messageCreate func as a callback for MessageCreate events.
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -61,8 +75,22 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
+	cancel() // Notify the worker to stop
+	isWorkerDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(isWorkerDone)
+	}()
+
 	// Cleanly close down the Discord session.
 	dg.Close()
+
+	select {
+	case <-isWorkerDone:
+		fmt.Println("Worker finished gracefully")
+	case <-time.After(1 * time.Minute):
+		fmt.Println("Enforcing shutdown")
+	}
 }
 
 // This function will be called (due to AddHandler above) every time a new
@@ -89,12 +117,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate, ctx context
 	log.Println("Received URI")
 
 	discordMsg := queue.NewDiscordMessage(m.ID, msgType, m.ChannelID, text)
+	msgResp, err := s.ChannelMessageSend(m.ChannelID, "Receive Message, start working!")
+	discordMsg.EditMsgID = msgResp.ID
 
-	err = queue.Enqueue(ctx, rdsClient, *discordMsg)
-	if err == nil {
-		s.ChannelMessageSend(m.ChannelID, "Receive Message, start working!")
-	} else {
-		s.ChannelMessageSend(m.ChannelID, err.Error())
+	err = queue.Enqueue(ctx, rdsClient, discordMsg)
+	if err != nil {
+		s.ChannelMessageEdit(m.ChannelID, msgResp.ID, err.Error())
 	}
 
 }
